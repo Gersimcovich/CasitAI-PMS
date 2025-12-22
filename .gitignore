@@ -1,0 +1,5 @@
+.env
+venv/
+.venv/
+casita.db
+__pycache__/
