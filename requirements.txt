@@ -1,8 +1,12 @@
+streamlit
+pandas
+plotly
+amadeus
+bcrypt
+python-dotenv
 fastapi
 uvicorn[standard]
-pandas
 python-multipart
-python-dotenv
 requests
 passlib[bcrypt]
 python-jose[cryptography]
