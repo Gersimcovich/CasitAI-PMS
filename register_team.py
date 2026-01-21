@@ -26,6 +26,6 @@ def add_team_member(email, password):
 
 if __name__ == "__main__":
     # Add your 5 team members here
-    add_team_member("georgia@hellocasita.com", "CasitaAdmin2025")
+    add_team_member("georgia@casita.com", "CasitaAdmin2025")
     add_team_member("team1@casita.com", "ServiceTeam01")
     # add_team_member("...", "...")

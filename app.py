@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from amadeus import Client
-import filter_leads
+import hotel_intel
 import os
 import sqlite3
 import bcrypt
@@ -31,7 +31,7 @@ if 'logged_in' not in st.session_state:
 # --- LOGIN SCREEN ---
 if not st.session_state.logged_in:
     # Maintain your branding even on login
-    st.image("src/Casita_Logo_Black&Orange-01.png", width=400, use_container_width=False)
+    st.image("src/Casita_Logo_Black&Orange-01transparent.png", width=400, use_container_width=False)
     st.title("Team Access")
     
     with st.form("login_form"):
@@ -54,12 +54,21 @@ if not st.session_state.logged_in:
 # --- UI: LOGO FIXED TOP LEFT (400px maintained) ---
 top_col1, top_col2 = st.columns([1, 4])
 with top_col1:
-    st.image("src/Casita_Logo_Black&Orange-01.png", width=400, use_container_width=False)
+    st.image("src/Casita_Logo_Black&Orange-01transparent.png", width=400, use_container_width=False)
 
 # API Initialization
 client_id = os.getenv('AMADEUS_CLIENT_ID', "").strip()
 client_secret = os.getenv('AMADEUS_CLIENT_SECRET', "").strip()
-amadeus = Client(client_id=client_id, client_secret=client_secret, hostname='test')
+
+if not client_id or not client_secret:
+    st.error("⚠️ Amadeus API credentials are missing! Please add them to the .env file.")
+    st.stop()
+
+try:
+    amadeus = Client(client_id=client_id, client_secret=client_secret, hostname='production')
+except Exception as e:
+    st.error(f"❌ Failed to initialize Amadeus API client: {str(e)}")
+    st.stop()
 
 if 'selected_hotel_id' not in st.session_state:
     st.session_state.selected_hotel_id = None
@@ -74,7 +83,7 @@ with st.sidebar:
     st.divider()
     
     st.subheader("Monitored Properties")
-    all_hotels = filter_leads.get_monitored_leads(amadeus)
+    all_hotels = hotel_intel.get_monitored_leads(amadeus)
     
     filtered = [h for h in all_hotels if search_query.lower() in h['hotel']['name'].lower()]
     
@@ -112,7 +121,7 @@ if not st.session_state.logged_in:
 if st.session_state.selected_hotel_id:
     st.header(st.session_state.current_hotel_name)
     
-    df = filter_leads.get_60_day_insight(amadeus, st.session_state.selected_hotel_id)
+    df = hotel_intel.get_60_day_insight(amadeus, st.session_state.selected_hotel_id)
     
     if not df.empty:
         room_types = list(df["Unit Type"].unique())
