@@ -18,14 +18,27 @@ load_dotenv()
 class GuestyAPI:
     """Guesty API Client for fetching listings and data"""
 
-    BASE_URL = "https://open-api.guesty.com/v1"
-    TOKEN_URL = "https://open-api.guesty.com/oauth2/token"
+    # Open API endpoints (requires Open API credentials)
+    OPEN_API_BASE_URL = "https://open-api.guesty.com/v1"
+    OPEN_API_TOKEN_URL = "https://open-api.guesty.com/oauth2/token"
 
-    def __init__(self, client_id: str = None, client_secret: str = None):
+    # Booking Engine API endpoints (requires Booking Engine credentials)
+    BOOKING_API_BASE_URL = "https://booking.guesty.com/api/v1"
+    BOOKING_API_TOKEN_URL = "https://booking.guesty.com/oauth2/token"
+
+    def __init__(self, client_id: str = None, client_secret: str = None, use_booking_api: bool = None):
         self.client_id = client_id or os.getenv('GUESTY_CLIENT_ID', '')
         self.client_secret = client_secret or os.getenv('GUESTY_CLIENT_SECRET', '')
         self._access_token = None
         self._token_expiry = None
+
+        # Auto-detect API type or use env var
+        if use_booking_api is None:
+            use_booking_api = os.getenv('GUESTY_USE_BOOKING_API', 'true').lower() == 'true'
+
+        self.use_booking_api = use_booking_api
+        self.BASE_URL = self.BOOKING_API_BASE_URL if use_booking_api else self.OPEN_API_BASE_URL
+        self.TOKEN_URL = self.BOOKING_API_TOKEN_URL if use_booking_api else self.OPEN_API_TOKEN_URL
 
     def _get_access_token(self) -> str:
         """Get OAuth2 access token from Guesty"""
@@ -34,12 +47,15 @@ class GuestyAPI:
             if datetime.now() < self._token_expiry:
                 return self._access_token
 
+        # Set scope based on API type
+        scope = 'booking_engine:api' if self.use_booking_api else 'open-api'
+
         # Request new token
         response = requests.post(
             self.TOKEN_URL,
             data={
                 'grant_type': 'client_credentials',
-                'scope': 'open-api',
+                'scope': scope,
                 'client_id': self.client_id,
                 'client_secret': self.client_secret
             },
@@ -91,9 +107,43 @@ class GuestyAPI:
     # LISTINGS
     # ============================================
 
+    def search_listings(self, check_in: str = None, check_out: str = None,
+                        guests: int = None, location: str = None) -> List[Dict]:
+        """
+        Search available listings (Booking Engine API).
+
+        Args:
+            check_in: Check-in date (YYYY-MM-DD)
+            check_out: Check-out date (YYYY-MM-DD)
+            guests: Number of guests
+            location: Location filter
+
+        Returns:
+            List of available listings
+        """
+        if not self.use_booking_api:
+            raise Exception("search_listings requires Booking Engine API credentials")
+
+        params = {}
+        if check_in:
+            params['checkIn'] = check_in
+        if check_out:
+            params['checkOut'] = check_out
+        if guests:
+            params['guests'] = guests
+        if location:
+            params['location'] = location
+
+        response = self._make_request('GET', '/search', params=params)
+        return response.get('results', response) if isinstance(response, dict) else response
+
     def get_all_listings(self, limit: int = 100, skip: int = 0,
                          active_only: bool = False) -> List[Dict]:
-        """Get all listings from Guesty"""
+        """Get all listings from Guesty (Open API only)"""
+        if self.use_booking_api:
+            # For Booking API, use search endpoint without filters
+            return self.search_listings()
+
         params = {
             'limit': limit,
             'skip': skip
