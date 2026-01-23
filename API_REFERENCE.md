@@ -1,23 +1,39 @@
 # Channel Manager API Reference
 
-> **Version:** 1.0
+> **Version:** 2.0
 > **Purpose:** API integration reference for Casita PMS
+> **Last Updated:** January 2026
 
 ---
 
 ## Table of Contents
 
-1. [Authentication](#authentication)
-2. [Base Configuration](#base-configuration)
-3. [Listings API](#listings-api)
-4. [Calendar & Pricing API](#calendar--pricing-api)
-5. [Reservations API](#reservations-api)
-6. [Messaging & Conversations API](#messaging--conversations-api)
-7. [Saved Replies API](#saved-replies-api)
-8. [Guests API](#guests-api)
-9. [Rate Limits & Best Practices](#rate-limits--best-practices)
-10. [Error Handling](#error-handling)
-11. [Casita-Specific Implementation Notes](#casita-specific-implementation-notes)
+1. [API Types](#api-types)
+2. [Authentication](#authentication)
+3. [Base Configuration](#base-configuration)
+4. [Booking Engine API](#booking-engine-api)
+5. [Open API - Listings](#open-api---listings)
+6. [Calendar & Pricing API](#calendar--pricing-api)
+7. [Reservations API](#reservations-api)
+8. [Messaging & Conversations API](#messaging--conversations-api)
+9. [Saved Replies API](#saved-replies-api)
+10. [Guests API](#guests-api)
+11. [Rate Limits & Best Practices](#rate-limits--best-practices)
+12. [Error Handling](#error-handling)
+13. [Casita-Specific Implementation Notes](#casita-specific-implementation-notes)
+
+---
+
+## API Types
+
+Guesty provides two separate APIs with different purposes and credentials:
+
+| API | Purpose | Base URL | Scope |
+|-----|---------|----------|-------|
+| **Booking Engine API** | Direct bookings, website integration | `https://booking.guesty.com/api/v1` | `booking_engine:api` |
+| **Open API** | Full PMS access, management | `https://open-api.guesty.com/v1` | `open-api` |
+
+> **Note:** Each API requires separate credentials. Booking Engine API credentials cannot access Open API endpoints and vice versa.
 
 ---
 
@@ -27,23 +43,44 @@
 
 Guesty uses OAuth 2.0 with **client credentials grant** (server-to-server, no user interaction).
 
+### Booking Engine API Authentication
+
+**Token Endpoint:**
+```
+POST https://booking.guesty.com/oauth2/token
+```
+
+**Request Body (form-encoded):**
+```
+grant_type=client_credentials
+scope=booking_engine:api
+client_id=YOUR_BOOKING_CLIENT_ID
+client_secret=YOUR_BOOKING_CLIENT_SECRET
+```
+
+**Response:**
+```json
+{
+  "access_token": "eyJ...",
+  "token_type": "Bearer",
+  "expires_in": 86400,
+  "scope": "booking_engine:api"
+}
+```
+
+### Open API Authentication
+
 **Token Endpoint:**
 ```
 POST https://open-api.guesty.com/oauth2/token
-```
-
-**Headers:**
-```
-Accept: application/json
-Content-Type: application/x-www-form-urlencoded
 ```
 
 **Request Body (form-encoded):**
 ```
 grant_type=client_credentials
 scope=open-api
-client_id=YOUR_CLIENT_ID
-client_secret=YOUR_CLIENT_SECRET
+client_id=YOUR_OPEN_API_CLIENT_ID
+client_secret=YOUR_OPEN_API_CLIENT_SECRET
 ```
 
 **Response:**
@@ -60,13 +97,17 @@ client_secret=YOUR_CLIENT_SECRET
 - **Expiration:** 24 hours (86400 seconds)
 - **Refresh Strategy:** Refresh 30-60 minutes before expiration or on 401/403 error
 - **Limit:** Max 5 tokens per 24 hours per client_id
+- **Best Practice:** Cache token and reuse for 24 hours to avoid rate limits on auth endpoint
 - **Usage:** `Authorization: Bearer {access_token}` in all requests
 
 ---
 
 ## Base Configuration
 
-**Base URL:** `https://open-api.guesty.com/v1`
+| API | Base URL |
+|-----|----------|
+| Booking Engine API | `https://booking.guesty.com/api/v1` |
+| Open API | `https://open-api.guesty.com/v1` |
 
 **Common Headers:**
 ```
@@ -76,7 +117,87 @@ Content-Type: application/json
 
 ---
 
-## Listings API
+## Booking Engine API
+
+The Booking Engine API is designed for building custom booking websites and widgets.
+
+### Search Available Listings
+```
+GET /search
+```
+
+**Query Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `checkIn` | string | Check-in date (YYYY-MM-DD) |
+| `checkOut` | string | Check-out date (YYYY-MM-DD) |
+| `guests` | int | Total number of guests |
+| `adults` | int | Number of adults |
+| `children` | int | Number of children |
+| `location` | string | Location filter |
+
+**Example Request:**
+```
+GET https://booking.guesty.com/api/v1/search?checkIn=2026-02-01&checkOut=2026-02-05&adults=2
+```
+
+### Get All Listings
+```
+GET /listings
+```
+
+### Get Listing by ID
+```
+GET /listings/{listingId}
+```
+
+### Get Listing Availability Calendar
+```
+GET /listings/{listingId}/calendar
+```
+
+### Get Cities
+```
+GET /cities
+```
+
+### Reservation Quote Flow
+
+#### Create Quote
+```
+POST /quotes
+```
+
+**Request Body:**
+```json
+{
+  "listingId": "listing_id",
+  "checkIn": "2026-02-01",
+  "checkOut": "2026-02-05",
+  "guests": 2
+}
+```
+
+#### Get Quote
+```
+GET /quotes/{quoteId}
+```
+
+#### Create Reservation from Quote
+```
+POST /quotes/{quoteId}/reservations
+```
+
+### Rate Limits (Booking Engine API)
+- 5 requests per second
+- 275 requests per minute
+- 16,500 requests per hour
+
+---
+
+## Open API - Listings
+
+> **Note:** These endpoints require Open API credentials (not Booking Engine API).
 
 ### Get All Listings
 ```
@@ -562,15 +683,43 @@ To train CasitAI on your team's style:
 GUESTY_CLIENT_ID=your_client_id
 GUESTY_CLIENT_SECRET=your_client_secret
 
-# Optional: Custom base URL (for testing)
-GUESTY_BASE_URL=https://open-api.guesty.com/v1
+# API Type Selection
+# Set to 'true' for Booking Engine API, 'false' for Open API
+GUESTY_USE_BOOKING_API=true
+
+# Ollama AI Bot Configuration
+OLLAMA_URL=http://localhost:11434
+OLLAMA_MODEL=llama3
 ```
+
+### API Credential Types
+
+| Environment Variable | Booking Engine API | Open API |
+|---------------------|-------------------|----------|
+| `GUESTY_CLIENT_ID` | From BEAPI settings | From Open API settings |
+| `GUESTY_CLIENT_SECRET` | From BEAPI settings | From Open API settings |
+| `GUESTY_USE_BOOKING_API` | `true` | `false` |
+
+> **Important:** Booking Engine API and Open API credentials are NOT interchangeable. Get the correct credentials from the respective sections in Guesty settings.
 
 ---
 
 ## Quick Reference
 
-### Most Common Endpoints
+### Booking Engine API Endpoints
+
+| Purpose | Method | Endpoint |
+|---------|--------|----------|
+| Search listings | GET | `/search` |
+| Get all listings | GET | `/listings` |
+| Get listing | GET | `/listings/{id}` |
+| Get calendar | GET | `/listings/{id}/calendar` |
+| Get cities | GET | `/cities` |
+| Create quote | POST | `/quotes` |
+| Get quote | GET | `/quotes/{id}` |
+| Create reservation | POST | `/quotes/{id}/reservations` |
+
+### Open API Endpoints
 
 | Purpose | Method | Endpoint |
 |---------|--------|----------|
@@ -585,4 +734,4 @@ GUESTY_BASE_URL=https://open-api.guesty.com/v1
 
 ---
 
-*This document serves as the primary reference for Guesty API integration in Casita PMS. Keep updated as API changes occur.*
+*This document serves as the primary reference for Guesty API integration in Casita PMS. Last updated January 2026.*
