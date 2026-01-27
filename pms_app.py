@@ -1286,74 +1286,105 @@ elif st.session_state.current_view == 'aibot':
         """)
 
 # ============================================
-# AMADEUS WATCHER VIEW
+# PRICE WATCHER VIEW
 # ============================================
 elif st.session_state.current_view == 'amadeus':
-    st.title("🔍 Amadeus Price Watcher")
+    st.title("🔍 Price Watcher")
 
     st.markdown("### Competitor Price Intelligence")
 
-    # Check if Amadeus credentials exist
-    amadeus_id = os.getenv('AMADEUS_CLIENT_ID', '')
-    amadeus_secret = os.getenv('AMADEUS_CLIENT_SECRET', '')
+    import hotel_intel
 
-    if amadeus_id and amadeus_secret:
-        st.success("✅ Amadeus API Connected")
+    # Determine which provider to use (Google Hotels primary, Amadeus fallback)
+    provider = None
+    provider_name = ""
 
-        # Import and use Amadeus
+    # Try Google Hotels first
+    google_sa_file = os.getenv('GOOGLE_SERVICE_ACCOUNT_FILE', '')
+    google_account_id = os.getenv('GOOGLE_HOTEL_ACCOUNT_ID', '')
+
+    if google_sa_file and google_account_id:
         try:
-            from amadeus import Client
-            import hotel_intel
-
-            amadeus = Client(client_id=amadeus_id, client_secret=amadeus_secret, hostname='production')
-
-            st.markdown("---")
-
-            # Search area config
-            col1, col2 = st.columns(2)
-            with col1:
-                st.markdown("**Search Area: South Beach, Miami**")
-                st.text("Latitude: 25.7826")
-                st.text("Longitude: -80.1340")
-                st.text("Radius: 5 KM")
-
-            with col2:
-                if st.button("🔄 Refresh Hotel List", type="primary"):
-                    st.rerun()
-
-            st.markdown("---")
-
-            # Get hotels from Amadeus
-            st.markdown("### 🏨 Competitor Hotels in Area")
-            with st.spinner("Fetching hotels from Amadeus..."):
-                hotels = hotel_intel.get_monitored_leads(amadeus)
-
-            if hotels:
-                st.success(f"Found {len(hotels)} hotels in the area")
-
-                # Display hotels
-                for hotel in hotels:
-                    h_name = hotel['hotel']['name']
-                    h_id = hotel['hotel']['hotelId']
-
-                    with st.expander(f"**{h_name}**"):
-                        st.text(f"Hotel ID: {h_id}")
-
-                        # Get 60-day insight
-                        if st.button(f"View Pricing", key=f"view_{h_id}"):
-                            df = hotel_intel.get_60_day_insight(amadeus, h_id)
-                            if not df.empty:
-                                st.dataframe(df, use_container_width=True, hide_index=True)
-            else:
-                st.warning("No hotels found or API error occurred")
-
+            from google_hotels_api import GoogleHotelsAPI
+            provider = GoogleHotelsAPI()
+            provider._get_access_token()
+            provider_name = "Google Hotels"
+            st.success("✅ Google Hotels API Connected")
         except Exception as e:
-            st.error(f"Error connecting to Amadeus: {str(e)}")
+            st.warning(f"Google Hotels unavailable: {e}")
+            provider = None
+
+    # Fall back to Amadeus
+    if provider is None:
+        amadeus_id = os.getenv('AMADEUS_CLIENT_ID', '')
+        amadeus_secret = os.getenv('AMADEUS_CLIENT_SECRET', '')
+
+        if amadeus_id and amadeus_secret:
+            try:
+                from amadeus import Client
+                provider = Client(client_id=amadeus_id, client_secret=amadeus_secret, hostname='production')
+                provider_name = "Amadeus"
+                st.success("✅ Amadeus API Connected")
+            except Exception as e:
+                st.error(f"Error connecting to Amadeus: {str(e)}")
+
+    if provider:
+        st.caption(f"Provider: {provider_name}")
+        st.markdown("---")
+
+        # Search area config
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("**Search Area: South Beach, Miami**")
+            st.text("Latitude: 25.7826")
+            st.text("Longitude: -80.1340")
+            st.text("Radius: 5 KM")
+
+        with col2:
+            if st.button("🔄 Refresh Hotel List", type="primary"):
+                st.rerun()
+
+        st.markdown("---")
+
+        # Get hotels
+        st.markdown("### 🏨 Competitor Hotels in Area")
+        with st.spinner(f"Fetching hotels from {provider_name}..."):
+            hotels = hotel_intel.get_monitored_leads(provider)
+
+        if hotels:
+            st.success(f"Found {len(hotels)} hotels in the area")
+
+            # Display hotels
+            for hotel in hotels:
+                h_name = hotel['hotel']['name']
+                h_id = hotel['hotel']['hotelId']
+
+                with st.expander(f"**{h_name}**"):
+                    st.text(f"Hotel ID: {h_id}")
+
+                    # Get 60-day insight
+                    if st.button(f"View Pricing", key=f"view_{h_id}"):
+                        df = hotel_intel.get_60_day_insight(provider, h_id)
+                        if not df.empty:
+                            st.dataframe(df, use_container_width=True, hide_index=True)
+        else:
+            st.warning("No hotels found or API error occurred")
 
     else:
-        st.warning("⚠️ Amadeus credentials not found in .env")
+        st.warning("⚠️ No hotel intelligence API configured")
         st.markdown("""
-        **To enable Amadeus Watcher:**
+        **To enable Price Watcher, configure one of these providers:**
+
+        **Option 1: Google Hotels (Recommended)**
+        1. Set up a Google Cloud project with Travel Partner API
+        2. Create a service account and download the JSON key
+        3. Add to your `.env` file:
+        ```
+        GOOGLE_SERVICE_ACCOUNT_FILE=service_account.json
+        GOOGLE_HOTEL_ACCOUNT_ID=your_account_id
+        ```
+
+        **Option 2: Amadeus (Legacy)**
         1. Get API credentials from [Amadeus for Developers](https://developers.amadeus.com)
         2. Add to your `.env` file:
         ```
